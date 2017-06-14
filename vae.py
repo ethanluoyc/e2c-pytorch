@@ -13,7 +13,7 @@ class Normal(object):
 
 
 class Encoder(nn.Module):
-    def __init__(self, D_in, H, D_out):
+    def __init__(self, D_in, D_out):
         super(Encoder, self).__init__()
         self.m = nn.Sequential(
             torch.nn.Linear(D_in, 800),
@@ -29,7 +29,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(torch.nn.Module):
-    def __init__(self, D_in, H, D_out):
+    def __init__(self, D_in, D_out):
         super(Decoder, self).__init__()
         self.m = nn.Sequential(
             torch.nn.Linear(D_in, 800),
@@ -49,10 +49,10 @@ class Decoder(torch.nn.Module):
 class VAE(torch.nn.Module):
     latent_dim = 8
 
-    def __init__(self, encoder, decoder):
+    def __init__(self, dim_in, dim_z):
         super(VAE, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
+        self.encoder = Encoder(dim_in, 800)
+        self.decoder = Decoder(dim_z, dim_in)
         self._enc_mu = torch.nn.Linear(800, 3)
         self._enc_log_sigma = torch.nn.Linear(800, 3)
 
@@ -82,7 +82,7 @@ class VAE(torch.nn.Module):
 def latent_loss(mu, var):
     logvar = var.log()
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-    KLD = torch.sum(KLD_element).mul_(-0.5)
+    KLD = torch.sum(KLD_element, dim=1).mul_(-0.5)
     return KLD
 
 
