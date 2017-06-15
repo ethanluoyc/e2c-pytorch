@@ -47,14 +47,13 @@ class Decoder(torch.nn.Module):
 
 
 class VAE(torch.nn.Module):
-    latent_dim = 8
 
     def __init__(self, dim_in, dim_z):
         super(VAE, self).__init__()
         self.encoder = Encoder(dim_in, 800)
         self.decoder = Decoder(dim_z, dim_in)
-        self._enc_mu = torch.nn.Linear(800, 3)
-        self._enc_log_sigma = torch.nn.Linear(800, 3)
+        self._enc_mu = torch.nn.Linear(800, dim_z)
+        self._enc_log_sigma = torch.nn.Linear(800, dim_z)
 
     def _sample_latent(self, h_enc):
         """
@@ -73,7 +72,7 @@ class VAE(torch.nn.Module):
 
         return eps.mul(sigma).add_(mu)  # Reparameterization trick
 
-    def forward(self, state):
+    def forward(self, state, *input):
         h_enc = self.encoder(state)
         z = self._sample_latent(h_enc)
         return self.decoder(z)

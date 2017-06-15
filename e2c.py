@@ -62,8 +62,10 @@ class Transition(nn.Module):
 
         self.trans_net = nn.Sequential(
             nn.Linear(dim_z, 100),
+            nn.BatchNorm1d(100),
             nn.ReLU(),
             nn.Linear(100, 100),
+            nn.BatchNorm1d(100),
             nn.ReLU(),
             nn.Linear(100, 2 * dim_z)
         )
@@ -131,22 +133,23 @@ class E2C(nn.Module):
         self.encoder = Encoder(dim_in, 800)
         self.enc_fc_normal = nn.Linear(800, dim_z * 2)
 
-        self.decoder = Decoder(dim_z, 800)
-        self.dec_fc_bernoulli = nn.Linear(800, dim_in)
+        self.decoder = Decoder(dim_z, dim_in)
         self.trans = Transition(dim_z, dim_u)
         self.lamdb = lambd
 
     def encode(self, x):
-        return F.relu(self.enc_fc_normal(self.encoder(x))).chunk(2, dim=1)
+        return self.enc_fc_normal(self.encoder(x)).chunk(2, dim=1)
 
     def decode(self, z):
-        return self.dec_fc_bernoulli(self.decoder(z))
+        return self.decoder(z)
 
     def transition(self, z, Qz, u):
         return self.trans(z, Qz, u)
 
     def reparam(self, mean, logvar):
         std = logvar.mul(0.5).exp_()
+        self.z_mean = mean
+        self.z_sigma = std
         eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
         return eps.mul(std).add_(mean), NormalDistribution(mean, std, torch.log(std))
@@ -165,8 +168,8 @@ class E2C(nn.Module):
         x_next_dec_pred = self.decode(z_next_pred)
 
         def loss():
-            x_reconst_loss = (x_dec - x_next).pow(2).mean(dim=1)
-            x_next_reconst_loss = (x_next_dec - x_next).pow(2).mean(dim=1)
+            x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
+            x_next_reconst_loss = (x_next_dec - x_next).pow(2).sum(dim=1)
 
             # see Appendix B from VAE paper:
             # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
