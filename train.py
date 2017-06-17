@@ -6,59 +6,18 @@ import os
 import glob
 import matplotlib.pyplot as plt
 import numpy as np
-from skimage.color import rgb2gray
-from skimage.transform import resize
 from pixel2torque.pytorch.vae import VAE, latent_loss
 from pixel2torque.pytorch.e2c import E2C
-
+from .datasets import PendulumData
 from torch.utils.data import Dataset, DataLoader
 
 img_width = 48
+
 
 def show_and_save(img, path):
     npimg = img.numpy()
     plt.imsave(path, np.transpose(npimg, (1, 2, 0)))
     return plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
-
-
-class PendulumData(Dataset):
-    def __init__(self, root, split):
-        if split not in ['train', 'test', 'all']:
-            raise ValueError
-
-        dir = os.path.join(root, split)
-        filenames = glob.glob(os.path.join(dir, '*.png'))
-
-        if split == 'all':
-            filenames = glob.glob(os.path.join(root, 'train/*.png'))
-            filenames.extend(glob.glob(os.path.join(root, 'test/*.png')))
-
-        filenames = sorted(
-            filenames, key=lambda x: int(os.path.basename(x).split('.')[0]))
-
-        images = []
-
-        for f in filenames:
-            img = plt.imread(f)
-            img[img != 1] = 0
-            images.append(resize(rgb2gray(img), [48, 48], mode='constant'))
-
-        self.images = np.array(images, dtype=np.float32)
-        self.images = self.images.reshape([len(images), 48, 48, 1])
-
-        action_filename = os.path.join(root, 'actions.txt')
-
-        with open(action_filename) as infile:
-            actions = np.array([float(l) for l in infile.readlines()])
-
-        self.actions = actions[:len(self.images)].astype(np.float32)
-        self.actions = self.actions.reshape(len(actions), 1)
-
-    def __len__(self):
-        return len(self.actions) - 1
-
-    def __getitem__(self, index):
-        return self.images[index], self.actions[index], self.images[index]
 
 
 def weights_init(m):
@@ -73,8 +32,10 @@ def compute_loss(reconst, actual, mean, var):
     loss = reconst_loss.add(ll).mean()
     return loss
 
+
 def parse_args(argv):
     pass
+
 
 if __name__ == '__main__':
     torch.manual_seed(1234)

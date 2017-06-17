@@ -3,6 +3,7 @@ from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
+
 class NormalDistribution(object):
     """
     Wrapper class representing a multivariate normal distribution parameterized by
@@ -95,6 +96,7 @@ class E2C(nn.Module):
         x_next_dec_pred = self.decode(z_next_pred)
 
         def loss():
+            # Reconstruction losses
             x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
             x_next_reconst_loss = (x_next_dec - x_next).pow(2).sum(dim=1)
 
@@ -106,6 +108,7 @@ class E2C(nn.Module):
             KLD_element = Qz.mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
             KLD = torch.sum(KLD_element, dim=1).mul(-0.5)
 
+            # ELBO
             bound_loss = x_reconst_loss.add(x_next_reconst_loss).add(KLD)
             kl = KLDGaussian(Qz_next_pred, Qz_next).mul(self.lamdb)
             loss = bound_loss.add(kl)
@@ -115,5 +118,6 @@ class E2C(nn.Module):
 
     def latent_embeddings(self, x):
         return self.encode(x)[0]
+
 
 from .e2c_configs import load_config
