@@ -3,7 +3,6 @@ from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-
 class NormalDistribution(object):
     """
     Wrapper class representing a multivariate normal distribution parameterized by
@@ -11,7 +10,7 @@ class NormalDistribution(object):
     Cov=A*(sigma).^2*A', where A = (I+v*r^T).
     """
 
-    def __init__(self, mu, sigma, logsigma, v=None, r=None):
+    def __init__(self, mu, sigma, logsigma, *, v=None, r=None):
         self.mu = mu
         self.sigma = sigma
         self.logsigma = logsigma
@@ -54,91 +53,19 @@ def KLDGaussian(Q, N, eps=1e-8):
     return 0.5 * (a + b - k + c)
 
 
-class Transition(nn.Module):
-    def __init__(self, dim_z, dim_u):
-        super(Transition, self).__init__()
-        self.dim_z = dim_z
-        self.dim_u = dim_u
-
-        self.trans_net = nn.Sequential(
-            nn.Linear(dim_z, 100),
-            nn.BatchNorm1d(100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.BatchNorm1d(100),
-            nn.ReLU(),
-            nn.Linear(100, 2 * dim_z)
-        )
-
-        self.fc_B = nn.Linear(dim_z, dim_z, dim_u)
-        self.fc_o = nn.Linear(dim_z, dim_z)
-
-    def forward(self, h, Q, u):
-        v, r = self.trans_net(h).chunk(2, dim=1)
-        v1 = v.unsqueeze(2)
-        rT = r.unsqueeze(1)
-        I = Variable(torch.eye(self.dim_z)).expand(v.size()[0], self.dim_z, self.dim_z)
-        A = I.add(v1.bmm(rT))
-
-        B = self.fc_B(h).view(-1, self.dim_z, self.dim_u)
-        o = self.fc_o(h)
-
-        # need to compute the parameters for distributions
-        # as well as for the samples
-        u = u.unsqueeze(2)
-
-        d = A.bmm(Q.mu.unsqueeze(2)).add(B.bmm(u)).add(o).squeeze(2)
-        sample = A.bmm(h.unsqueeze(2)).add(B.bmm(u)).add(o).squeeze(2)
-
-        return sample, NormalDistribution(d, Q.sigma, Q.logsigma, v, r)
-
-
-class Encoder(nn.Module):
-    def __init__(self, dim_in, dim_out):
-        super(Encoder, self).__init__()
-        self.m = nn.Sequential(
-            torch.nn.Linear(dim_in, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            torch.nn.Linear(800, dim_out),
-            nn.BatchNorm1d(dim_out),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        return self.m(x)
-
-
-class Decoder(nn.Module):
-    def __init__(self, dim_in, dim_out):
-        super(Decoder, self).__init__()
-        self.m = nn.Sequential(
-            torch.nn.Linear(dim_in, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            torch.nn.Linear(800, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            nn.Linear(800, dim_out),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        return self.m(x)
-
-
 class E2C(nn.Module):
-    def __init__(self, dim_in, dim_z, dim_u, lambd=0.5):
+    def __init__(self, dim_in, dim_z, dim_u, lambd=0.5,
+                 config='pendulum'):
         super(E2C, self).__init__()
-        self.encoder = Encoder(dim_in, 800)
-        self.enc_fc_normal = nn.Linear(800, dim_z * 2)
+        enc, trans, dec = load_config(config)
+        self.encoder = enc(dim_in, dim_z)
 
-        self.decoder = Decoder(dim_z, dim_in)
-        self.trans = Transition(dim_z, dim_u)
+        self.decoder = dec(dim_z, dim_in)
+        self.trans = trans(dim_z, dim_u)
         self.lamdb = lambd
 
     def encode(self, x):
-        return self.enc_fc_normal(self.encoder(x)).chunk(2, dim=1)
+        return self.encoder(x)
 
     def decode(self, z):
         return self.decoder(z)
@@ -185,3 +112,8 @@ class E2C(nn.Module):
             return loss.mean()
 
         return x_next_dec_pred, loss
+
+    def latent_embeddings(self, x):
+        return self.encode(x)[0]
+
+from .e2c_configs import load_config

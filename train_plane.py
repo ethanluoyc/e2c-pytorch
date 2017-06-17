@@ -1,24 +1,28 @@
-import torch
-from torch import optim
-import torchvision
-from torch.autograd import Variable
-import os
+import argparse
 import glob
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
+import torchvision
+from mpl_toolkits.mplot3d import Axes3D
 from skimage.color import rgb2gray
 from skimage.transform import resize
-from pixel2torque.pytorch.vae import VAE, latent_loss
+
 from pixel2torque.pytorch.e2c import E2C
+from pixel2torque.pytorch.vae import VAE, latent_loss
+import torch
+from torch import optim
+from torch.autograd import Variable
+from torch.utils.data import DataLoader, Dataset
 
-from torch.utils.data import Dataset, DataLoader
+img_width = 40
 
-img_width = 48
 
 def show_and_save(img, path):
     npimg = img.numpy()
     plt.imsave(path, np.transpose(npimg, (1, 2, 0)))
-    return plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
 
 
 class PendulumData(Dataset):
@@ -73,35 +77,58 @@ def compute_loss(reconst, actual, mean, var):
     loss = reconst_loss.add(ll).mean()
     return loss
 
-def parse_args(argv):
-    pass
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='train e2c on plane data')
+    parser.add_argument('--batch-size', required=False, default=128, type=int)
+    parser.add_argument('--lr', required=False, default=3e-4, type=float)
+    parser.add_argument('--seed', required=False, default=1234, type=int)
+    return parser.parse_args()
+
 
 if __name__ == '__main__':
-    torch.manual_seed(1234)
-    np.random.seed(1234)
+    args = parse_args()
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     width = img_width
     height = width
     model_dir = 'checkpoints'
 
-    dataset = PendulumData(
-        'data/pendulum_data/pendulum_max-speed_0.1-gravity-train-test', 'all')
+    from pixel2torque.tf_e2c.plane_data2 import PlaneData
 
+    env_path = os.path.join(os.path.dirname(__file__), '../tf_e2c', 'env0.png')
+    planedata = PlaneData('plane0.npz', env_path)
+    planedata.initialize()
+
+    class PlaneData(torch.utils.data.Dataset):
+        def __init__(self, planedata):
+            self.planedata = planedata
+            self.sampled = planedata.sample(128)
+
+        def __len__(self):
+            return len(self.sampled[0])
+
+        def __getitem__(self, index):
+            return self.sampled[0][index], self.sampled[1][
+                index], self.sampled[2][index]
+
+    dataset = PlaneData(planedata)
     trainset = dataset
     testset = dataset
 
-    # trainset = PendulumData('bitbucket/data/processed/pendulum_max-speed_0.1-gravity-train-test', 'train')
-    # testset = PendulumData('bitbucket/data/processed/pendulum_max-speed_0.1-gravity-train-test', 'test')
-
-    batch_size = len(trainset)
-    dim_u = 1
+    batch_size = len(dataset)
     print('batch_size %d' % batch_size)
 
     loader = DataLoader(trainset, batch_size, shuffle=True, drop_last=False)
 
     input_dim = width * height
-    model = E2C(input_dim, 3, 1)
+    latent_dim = 2
+    action_dim = 2
 
+    model = E2C(input_dim, latent_dim, action_dim)
+
+    print(model)
     weights_init(model)
 
     optimizer = optim.Adam(model.parameters(), lr=3e-4, betas=(0.1, 0.1))
@@ -109,22 +136,20 @@ if __name__ == '__main__':
     l = None
     ll = None
     reconst_loss = None
-
-    plt.figure(1)
-    plt.ion()
-    plt.pause(0.01)
-
-    # if os.path.exists('checkpoint.pth'):
-    #     model = torch.load('checkpoint.pth')
-    #     print('checkpoint loaded')
+    fig = plt.figure('Embeddings')
+    true_ax = plt.subplot(121)
+    pred_ax = plt.subplot(122)
 
     for epoch in range(1000):
+        fig.suptitle('Epoch: {}'.format(epoch))
         model.train()
         for i, (x, u, x_next) in enumerate(loader):
-            x = Variable(x.resize_(batch_size, input_dim), requires_grad=False)
-            u = Variable(u)
+            x = Variable(
+                x.resize_(batch_size, input_dim).float(), requires_grad=False)
+            u = Variable(u.float())
             x_next = Variable(
-                x_next.resize_(batch_size, input_dim), requires_grad=False)
+                x_next.resize_(batch_size, input_dim).float(),
+                requires_grad=False)
 
             optimizer.zero_grad()
 
@@ -138,26 +163,54 @@ if __name__ == '__main__':
 
         if epoch % 100 == 0:
             model.eval()
+
             x, actions, x_next = testset[:len(testset)]
             x = Variable(
-                torch.from_numpy(x).view(len(testset), input_dim),
+                torch.from_numpy(x).view(len(testset), input_dim).float(),
                 requires_grad=False)
-            actions = Variable(torch.from_numpy(actions), requires_grad=False)
+            actions = Variable(
+                torch.from_numpy(actions).float(), requires_grad=False)
             x_next = Variable(
-                torch.from_numpy(x_next).view(len(testset), input_dim),
+                torch.from_numpy(x_next).view(len(testset), input_dim).float(),
                 requires_grad=False)
             predicted, _ = model(x, actions, x_next)
 
-            concat = torch.cat([x_next, predicted], 1)
-            grid = torchvision.utils.make_grid(
-                concat.view(len(testset), 1, img_width * 2, img_width).data, nrow=16)
+            # x = planedata.getPSpace()[:,1]
+            # y = planedata.getPSpace()[:,0]
+            # cs = np.array([i for i in range(len(x))]) / len(x)
+            # plt.scatter(x, y, c=cs)
+            # plt.show()
 
-            # npz = model.z_mean.data.numpy() TODO
-            show_and_save(grid,
-                          os.path.join(model_dir,
-                                       'test-{:04}.png'.format(epoch)))
+            all_states = []
+            for p in planedata.getPSpace():
+                all_states.append(np.array(planedata.getXp(p.astype(np.int))))
+
+            all_states = Variable(
+                torch.from_numpy(np.array(all_states)).view(
+                    len(planedata.getPSpace()), input_dim))
+            embeds = model.latent_embeddings(all_states)
+
+            # For each set of style and range settings, plot n random points in the box
+            # defined by x in [23, 32], y in [0, 100], z in [zlow, zhigh].
+            colors = np.array(range(len(all_states))) / len(all_states)
+
+            xs = embeds[:, 0].data.numpy()
+            ys = embeds[:, 1].data.numpy()
+
+            true_ax.scatter(
+                planedata.getPSpace()[:, 0],
+                planedata.getPSpace()[:, 1],
+                c=colors)
+            pred_ax.scatter(xs, ys, c=colors)
 
             plt.pause(0.01)
+            plt.show(block=False)
+            concat = torch.cat([x_next, predicted], 1)
+            grid = torchvision.utils.make_grid(
+                concat.view(len(testset), 1, img_width * 2, img_width).data,
+                nrow=16)
+
+            show_and_save(grid, os.path.join(model_dir, 'test-{:04}.png'.format(epoch)))
 
             # data = Variable(torch.from_numpy(testset[:batch_size]).view(batch_size, 48 * 48))
             # predicted = vae(data)
