@@ -43,7 +43,7 @@ def KLDGaussian(Q, N, eps=1e-8):
     s02, s12 = (Q.sigma).pow(2) + eps, (N.sigma).pow(2) + eps
     a = sum(s02 * (1. + 2. * v * r) / s12) + sum(v.pow(2) / s12) * sum(r.pow(2) * s02)  # trace term
     b = sum((mu1 - mu0).pow(2) / s12)  # difference-of-means term
-    c = 2. * (sum(N.logsigma - Q.logsigma) - torch.log(1. + sum(v * r)))  # ratio-of-determinants term.
+    c = 2. * (sum(N.logsigma - Q.logsigma) - torch.log(1. + sum(v * r) + eps))  # ratio-of-determinants term.
 
     #
     # print('trace: %s' % a)
@@ -54,9 +54,12 @@ def KLDGaussian(Q, N, eps=1e-8):
     return 0.5 * (a + b - k + c)
 
 
+def binary_crossentropy(t, o, eps=1e-8):
+    return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
+
+
 class E2C(nn.Module):
-    def __init__(self, dim_in, dim_z, dim_u, lambd=0.5,
-                 config='pendulum'):
+    def __init__(self, dim_in, dim_z, dim_u, lambd=0.5, config='pendulum'):
         super(E2C, self).__init__()
         enc, trans, dec = load_config(config)
         self.encoder = enc(dim_in, dim_z)
@@ -97,8 +100,12 @@ class E2C(nn.Module):
 
         def loss():
             # Reconstruction losses
-            x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
-            x_next_reconst_loss = (x_next_dec - x_next).pow(2).sum(dim=1)
+            if False:  # TODO refactor this
+                x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
+                x_next_reconst_loss = (x_next_dec - x_next).pow(2).sum(dim=1)
+            else:
+                x_reconst_loss = -binary_crossentropy(x, x_dec).sum(dim=1)
+                x_next_reconst_loss = -binary_crossentropy(x_next, x_next_dec).sum(dim=1)
 
             # see Appendix B from VAE paper:
             # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -111,8 +118,7 @@ class E2C(nn.Module):
             # ELBO
             bound_loss = x_reconst_loss.add(x_next_reconst_loss).add(KLD)
             kl = KLDGaussian(Qz_next_pred, Qz_next).mul(self.lamdb)
-            loss = bound_loss.add(kl)
-            return loss.mean()
+            return bound_loss.mean(), kl.mean()
 
         return x_next_dec_pred, loss
 

@@ -12,7 +12,8 @@ from skimage.transform import resize
 
 from torch.utils.data import Dataset
 from pixel2torque.tf_e2c.plane_data2 import T, num_t
-
+from skimage.transform import resize
+from skimage.color import rgb2gray
 
 
 class PendulumData(Dataset):
@@ -72,18 +73,39 @@ class PlaneDataset(Dataset):
 
 
 class GymPendulumDataset(Dataset):
+    width = 40
+    height = 40
     """Sample from the OpenAI Gym environment, requires a patched version of gym"""
     def __init__(self, filename):
-        self._data = np.load(filename)
+        _data = np.load(filename)
+        self.X0 = np.copy(_data['X0'])  # Copy to memory, otherwise it's slow.
+        self.X1 = np.copy(_data['X1'])
+        self.U = np.copy(_data['U'])
+        _data.close()
 
     def __len__(self):
-        return len(self._data['X0'])
+        return len(self.X0)
 
     def __getitem__(self, index):
-        return self._data['X0'][index], self._data['U'][index], self._data['X1'][index]
+        return self.X0[index], self.U[index], self.X1[index]
 
     @classmethod
-    def sample_trajectories(self, filename, sample_size, step_size=1):
+    def all_states(cls):
+        _env = gym.make('Pendulum-v0').env
+        width = GymPendulumDataset.width
+        height = GymPendulumDataset.height
+        X = np.zeros((360, width, height))
+
+        for i in range(360):
+            th = i / 360. * 2 * np.pi
+            state = _env.render_state(th)
+            X[i, :, :] = resize(rgb2gray(state), (width, height), mode='reflect')
+        _env.close()
+        _env.viewer.close()
+        return X
+
+    @classmethod
+    def sample_trajectories(self, sample_size, step_size=1):
         _env = gym.make('Pendulum-v0').env
         X0 = np.zeros((sample_size, 500, 500, 3), dtype=np.uint8)
         U  = np.zeros((sample_size, 1), dtype=np.float32)
@@ -94,11 +116,11 @@ class GymPendulumDataset(Dataset):
             state = np.array([th, thdot])
             initial = state
             u = np.random.uniform(-2, 2, size=(1,))
-            for i in range(step_size):
+            for _ in range(step_size):
                 state = _env.step_from_state(state, u)
 
             X0[i, :, :, :] = _env.render_state(initial[0])
             U[i, :] = u
             X1[i, :, :, :] = _env.render_state(state[0])
-
-        np.savez(filename, X0=X0, U=U, X1=X1)
+        _env.viewer.close()
+        return X0, U, X1
