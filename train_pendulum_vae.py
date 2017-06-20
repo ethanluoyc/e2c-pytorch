@@ -7,6 +7,7 @@ import os
 import sys
 
 from pixel2torque.pytorch.e2c import E2C
+from pixel2torque.pytorch.vae import VAE
 import torch
 from torch import optim
 from torch.autograd import Variable
@@ -77,7 +78,7 @@ if __name__ == '__main__':
     latent_dim = 3
     action_dim = 1
 
-    model = E2C(input_dim, latent_dim, action_dim, config='pendulum')
+    model = VAE(input_dim, latent_dim, config='pendulum')
 
     print(model)
     weights_init(model)
@@ -110,9 +111,12 @@ if __name__ == '__main__':
                 u.data.cuda()
                 x_next.cuda()
 
+            optimizer.zero_grad()
+
             dec, closure = model(x, u, x_next)
-            bound_loss, kl_loss = closure()
-            loss = bound_loss.add(kl_loss)
+            reconst_loss, latent_loss = closure()
+            loss = reconst_loss.add(latent_loss)
+
             loss.backward()
             optimizer.step()
 
@@ -130,6 +134,6 @@ if __name__ == '__main__':
 
             if step % 100 == 0:
                 print('step: {}, loss: {}, bound_loss: {}, kl_loss: {}' \
-                      .format(step, aggregate_loss, bound_loss.data[0], kl_loss.data[0]))
+                      .format(step, aggregate_loss, reconst_loss.data[0], latent_loss.data[0]))
 
             step += 1
