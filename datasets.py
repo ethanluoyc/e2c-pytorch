@@ -115,6 +115,7 @@ class GymPendulumDataset(Dataset):
             thdot = np.random.uniform(-8, 8)
             state = np.array([th, thdot])
             initial = state
+            # apply the same control over a few timesteps
             u = np.random.uniform(-2, 2, size=(1,))
             for _ in range(step_size):
                 state = _env.step_from_state(state, u)

@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 from torch.autograd import Variable
-import torch.nn.functional as F
+
+from pixel2torque.pytorch.losses import binary_crossentropy
 
 
 class NormalDistribution(object):
@@ -52,10 +53,6 @@ def KLDGaussian(Q, N, eps=1e-8):
     # print('det: %s' % c)
 
     return 0.5 * (a + b - k + c)
-
-
-def binary_crossentropy(t, o, eps=1e-8):
-    return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
 
 
 class E2C(nn.Module):
@@ -126,6 +123,12 @@ class E2C(nn.Module):
 
     def latent_embeddings(self, x):
         return self.encode(x)[0]
+
+    def predict(self, X, U):
+        mean, logvar = self.encode(X)
+        z, Qz = self.reparam(mean, logvar)
+        z_next_pred, Qz_next_pred = self.transition(z, Qz, U)
+        return self.decode(z_next_pred)
 
 
 from .e2c_configs import load_config

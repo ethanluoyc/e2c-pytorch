@@ -2,52 +2,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from .e2c_configs import load_config
-
-class Normal(object):
-    def __init__(self, mu, sigma, log_sigma, v=None, r=None):
-        self.mu = mu
-        self.sigma = sigma  # either stdev diagonal itself, or stdev diagonal from decomposition
-        self.logsigma = log_sigma
-        self.v = v
-        self.r = r
-
-
-class Encoder(nn.Module):
-    def __init__(self, D_in, D_out):
-        super(Encoder, self).__init__()
-        self.m = nn.Sequential(
-            torch.nn.Linear(D_in, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            torch.nn.Linear(800, D_out),
-            nn.BatchNorm1d(D_out),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        return self.m(x)
-
-
-class Decoder(torch.nn.Module):
-    def __init__(self, D_in, D_out):
-        super(Decoder, self).__init__()
-        self.m = nn.Sequential(
-            torch.nn.Linear(D_in, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            torch.nn.Linear(800, 800),
-            nn.BatchNorm1d(800),
-            nn.ReLU(),
-            nn.Linear(800, D_out),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        return self.m(x)
-
-
-def binary_crossentropy(t, o, eps=1e-8):
-    return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
+from .losses import binary_crossentropy
 
 
 class VAE(torch.nn.Module):
@@ -93,10 +48,3 @@ class VAE(torch.nn.Module):
 
     def latent_embeddings(self, x):
         return self.encoder(x)[0]
-
-
-def latent_loss(mu, var):
-    logvar = var.log()
-    KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-    KLD = torch.sum(KLD_element, dim=1).mul_(-0.5)
-    return KLD
