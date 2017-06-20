@@ -82,6 +82,8 @@ class E2C(nn.Module):
         self.z_mean = mean
         self.z_sigma = std
         eps = torch.FloatTensor(std.size()).normal_()
+        if std.data.is_cuda:
+            eps.cuda()
         eps = Variable(eps)
         return eps.mul(std).add_(mean), NormalDistribution(mean, std, torch.log(std))
 

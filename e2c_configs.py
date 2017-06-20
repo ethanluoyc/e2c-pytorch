@@ -47,6 +47,8 @@ class Transition(nn.Module):
         v1 = v.unsqueeze(2)
         rT = r.unsqueeze(1)
         I = Variable(torch.eye(self.dim_z).repeat(batch_size, 1, 1))
+        if rT.data.is_cuda:
+            I.dada.cuda()
         A = I.add(v1.bmm(rT))
 
         B = self.fc_B(h).view(-1, self.dim_z, self.dim_u)
@@ -139,7 +141,9 @@ class PendulumTransition(Transition):
             nn.Linear(100, 100),
             nn.BatchNorm1d(100),
             nn.ReLU(),
-            nn.Linear(100, dim_z * 2)
+            nn.Linear(100, dim_z * 2),
+            nn.BatchNorm1d(dim_z * 2),
+            nn.Sigmoid() # Added to prevent nan
         )
         super(PendulumTransition, self).__init__(trans, dim_z, dim_u)
 

@@ -13,6 +13,8 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from pixel2torque.pytorch.datasets import GymPendulumDataset
 
+USE_CUDA = torch.cuda.is_available()
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='train e2c on plane data')
@@ -20,10 +22,11 @@ def parse_args():
     parser.add_argument('--lr', required=False, default=3e-4, type=float)
     parser.add_argument('--seed', required=False, default=1234, type=int)
     parser.add_argument('--model-dir', required=True)
+    parser.add_argument('--data', required=True)
     parser.add_argument('--test-frequency', default=100)
-    parser.add_argument('--eval-embedding-frequency', default=100)
+    parser.add_argument('--eval-frequency', default=1000)
     parser.add_argument('--visual', action='store_true')
-    parser.add_argument('--epochs', default=1000)
+    parser.add_argument('--epochs', default=100000)
     return parser.parse_args()
 
 
@@ -57,7 +60,7 @@ if __name__ == '__main__':
     if not os.path.exists(model_dir):
         os.makedirs(model_dir, exist_ok=False)
 
-    dataset = GymPendulumDataset('data/pendulum/pendulum.npz')
+    dataset = GymPendulumDataset(args.data)
 
     all_states = Variable(torch.from_numpy(GymPendulumDataset.all_states())
                           .float().view(360, width * height),
@@ -87,6 +90,7 @@ if __name__ == '__main__':
 
     def viz_embedding(model):
         # Visualize a 3d embedding
+        fig.clear()
         ax = fig.add_subplot(111, projection='3d')
         embeds = model.latent_embeddings(all_states).data.cpu().numpy()
         ax.scatter(embeds[:, 0], embeds[:, 1], embeds[:, 2])
@@ -98,9 +102,13 @@ if __name__ == '__main__':
         for i, (x, u, x_next) in enumerate(loader):
             x = Variable(
                 x.resize_(batch_size, input_dim).float(), requires_grad=False)
-            u = Variable(u.float())
+            u = Variable(u.float(), requires_grad=False)
             x_next = Variable(x_next.resize_(batch_size, input_dim).float(),
                               requires_grad=False)
+            if USE_CUDA:
+                x.data.cuda()
+                u.data.cuda()
+                x_next.cuda()
 
             dec, closure = model(x, u, x_next)
             bound_loss, kl_loss = closure()
@@ -110,13 +118,13 @@ if __name__ == '__main__':
 
             aggregate_loss = loss.data[0]
 
-            if step >= 1e5:
+            if step >= args.epochs:
                 sys.exit(0)
 
             if step % 1000 == 0:
                 checkpoint(step, model, model_dir)
 
-            if step % 100 == 0:
+            if step % 1000 == 0:
                 viz_embedding(model)
                 plt.savefig(os.path.join(model_dir, 'embeddings_step-{:05d}'.format(step)))
 
