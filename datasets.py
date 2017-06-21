@@ -105,7 +105,7 @@ class GymPendulumDataset(Dataset):
         return X
 
     @classmethod
-    def sample_trajectories(self, sample_size, step_size=1):
+    def sample_trajectories(self, sample_size, step_size=1, apply_control=True):
         _env = gym.make('Pendulum-v0').env
         X0 = np.zeros((sample_size, 500, 500, 3), dtype=np.uint8)
         U  = np.zeros((sample_size, 1), dtype=np.float32)
@@ -116,7 +116,10 @@ class GymPendulumDataset(Dataset):
             state = np.array([th, thdot])
             initial = state
             # apply the same control over a few timesteps
-            u = np.random.uniform(-2, 2, size=(1,))
+            if apply_control:
+                u = np.random.uniform(-2, 2, size=(1,))
+            else:
+                u = np.zeros((1,))
             for _ in range(step_size):
                 state = _env.step_from_state(state, u)
 

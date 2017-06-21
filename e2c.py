@@ -88,38 +88,16 @@ class E2C(nn.Module):
         mean, logvar = self.encode(x)
         mean_next, logvar_next = self.encode(x_next)
 
-        z, Qz = self.reparam(mean, logvar)
-        z_next, Qz_next = self.reparam(mean_next, logvar_next)
+        z, self.Qz = self.reparam(mean, logvar)
+        z_next, self.Qz_next = self.reparam(mean_next, logvar_next)
 
-        x_dec = self.decode(z)
-        x_next_dec = self.decode(z_next)
+        self.x_dec = self.decode(z)
+        self.x_next_dec = self.decode(z_next)
 
-        z_next_pred, Qz_next_pred = self.transition(z, Qz, action)
-        x_next_dec_pred = self.decode(z_next_pred)
+        self.z_next_pred, self.Qz_next_pred = self.transition(z, self.Qz, action)
+        self.x_next_pred_dec = self.decode(self.z_next_pred)
 
-        def loss():
-            # Reconstruction losses
-            if False:  # TODO refactor this
-                x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
-                x_next_reconst_loss = (x_next_dec - x_next).pow(2).sum(dim=1)
-            else:
-                x_reconst_loss = -binary_crossentropy(x, x_dec).sum(dim=1)
-                x_next_reconst_loss = -binary_crossentropy(x_next, x_next_dec).sum(dim=1)
-
-            # see Appendix B from VAE paper:
-            # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-            # https://arxiv.org/abs/1312.6114
-            # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-            logvar = Qz.logsigma.exp().pow(2).log()
-            KLD_element = Qz.mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-            KLD = torch.sum(KLD_element, dim=1).mul(-0.5)
-
-            # ELBO
-            bound_loss = x_reconst_loss.add(x_next_reconst_loss).add(KLD)
-            kl = KLDGaussian(Qz_next_pred, Qz_next).mul(self.lamdb)
-            return bound_loss.mean(), kl.mean()
-
-        return x_next_dec_pred, loss
+        return self.x_next_pred_dec
 
     def latent_embeddings(self, x):
         return self.encode(x)[0]
