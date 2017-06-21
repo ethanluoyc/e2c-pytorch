@@ -112,7 +112,8 @@ class GymPendulumDataset(Dataset):
         X1 = np.zeros((sample_size, 500, 500, 3), dtype=np.uint8)
         for i in range(sample_size):
             th = np.random.uniform(0, np.pi*2)
-            thdot = np.random.uniform(-8, 8)
+            # thdot = np.random.uniform(-8, 8)
+            thdot = 0
             state = np.array([th, thdot])
             initial = state
             # apply the same control over a few timesteps
