@@ -5,7 +5,6 @@ set of configuration.
 """
 import torch
 from torch import nn
-from .e2c import NormalDistribution
 from torch.autograd import Variable
 
 
@@ -105,7 +104,7 @@ class PlaneTransition(Transition):
 
 class PendulumEncoder(Encoder):
     def __init__(self, dim_in, dim_out):
-        m = nn.Sequential(
+        m = nn.ModuleList([
             torch.nn.Linear(dim_in, 800),
             nn.BatchNorm1d(800),
             nn.ReLU(),
@@ -113,7 +112,7 @@ class PendulumEncoder(Encoder):
             nn.BatchNorm1d(800),
             nn.ReLU(),
             nn.Linear(800, 2 * dim_out)
-        )
+        ])
         super(PendulumEncoder, self).__init__(m, dim_in, dim_out)
 
 
@@ -163,5 +162,6 @@ def load_config(name):
         raise ValueError("Unknown config: %s", name)
     return _CONFIG_MAP[name]
 
+from .e2c import NormalDistribution
 
 __all__ = ['load_config']
