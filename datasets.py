@@ -75,6 +75,7 @@ class PlaneDataset(Dataset):
 class GymPendulumDataset(Dataset):
     width = 40
     height = 40
+    action_dim = 1
     """Sample from the OpenAI Gym environment, requires a patched version of gym"""
     def __init__(self, filename):
         _data = np.load(filename)

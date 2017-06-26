@@ -41,4 +41,4 @@ def compute_loss(x_pred, x_true, z_pred, z_true, beta=0.05):
     mse = nn.MSELoss()
     return mse(x_pred, x_true).add(beta * kl_bernoulli(z_pred, z_true))
 
-from pixel2torque.pytorch.e2c_configs import load_config
+from pixel2torque.pytorch.configs import load_config
