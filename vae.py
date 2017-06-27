@@ -43,8 +43,8 @@ def compute_loss(x_pred, x_true, z_mean, z_logsigma, mse=False):
     if mse:
         x_reconst_loss = (x_pred - x_true).pow(2).sum(dim=1)
     else:
-        x_reconst_loss = -binary_crossentropy(x_pred, x_true).sum(dim=1)
-    logvar = z_logsigma.exp().pow(2).log()
+        x_reconst_loss = -binary_crossentropy(x_true, x_pred).sum(dim=1)
+    logvar = z_logsigma.mul(2)
     KLD_element = z_mean.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element, dim=1).mul(-0.5)
     return x_reconst_loss.mean(), KLD.mean()
