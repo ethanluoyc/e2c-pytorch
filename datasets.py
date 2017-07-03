@@ -2,12 +2,14 @@ import glob
 import os
 from os import path
 
+from PIL import Image
+
 import matplotlib.pyplot as plt
 import numpy as np
 import gym
 import json
 from datetime import datetime
-
+from torchvision.transforms import ToTensor
 from torch.utils.data import Dataset
 from pixel2torque.tf_e2c.plane_data2 import T, num_t
 from skimage.transform import resize
@@ -76,6 +78,7 @@ class GymPendulumDataset(Dataset):
     height = 40
     action_dim = 1
     """Sample from the OpenAI Gym environment, requires a patched version of gym"""
+
     def __init__(self, filename):
         _data = np.load(filename)
         self.X0 = np.copy(_data['X0'])  # Copy to memory, otherwise it's slow.
@@ -108,10 +111,10 @@ class GymPendulumDataset(Dataset):
     def sample_trajectories(self, sample_size, step_size=1, apply_control=True):
         _env = gym.make('Pendulum-v0').env
         X0 = np.zeros((sample_size, 500, 500, 3), dtype=np.uint8)
-        U  = np.zeros((sample_size, 1), dtype=np.float32)
+        U = np.zeros((sample_size, 1), dtype=np.float32)
         X1 = np.zeros((sample_size, 500, 500, 3), dtype=np.uint8)
         for i in range(sample_size):
-            th = np.random.uniform(0, np.pi*2)
+            th = np.random.uniform(0, np.pi * 2)
             # thdot = np.random.uniform(-8, 8)
             thdot = 0
             state = np.array([th, thdot])
@@ -132,24 +135,39 @@ class GymPendulumDataset(Dataset):
 
 
 class GymPendulumDatasetV2(Dataset):
+    width = 40 * 2
+    height = 40
+    action_dim = 1
+
     def __init__(self, dir):
         self.dir = dir
         with open(path.join(dir, 'data.json')) as f:
             self._data = json.load(f)
+        self.to_tensor = ToTensor()
 
     def __len__(self):
         return len(self._data['samples'])
 
     def __getitem__(self, index):
         sample = self._data['samples'][index]
-        before = plt.imread(os.path.join(self.dir, sample['before']))
-        after = plt.imread(os.path.join(self.dir, sample['after']))
+
+        before = Image.open(os.path.join(self.dir, sample['before']))
+        before = self._process_image(before)
+
+        after = Image.open(os.path.join(self.dir, sample['after']))
+        after = self._process_image(after)
+
         u = np.array(sample['control'])
         return before, u, after
 
+    def _process_image(self, img):
+        return self.to_tensor(img.resize((GymPendulumDatasetV2.width,
+                                          GymPendulumDatasetV2.height))\
+                              .convert('L'))
+
     @classmethod
     def sample_traj(cls, sample_size, output_dir, step_size=1,
-                           apply_control=True, num_shards=10):
+                    apply_control=True, num_shards=10):
         env = gym.make('Pendulum-v0').env
         assert sample_size % num_shards == 0
 
