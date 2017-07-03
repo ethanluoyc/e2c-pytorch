@@ -14,6 +14,8 @@ from torch.utils.data import Dataset
 from pixel2torque.tf_e2c.plane_data2 import T, num_t
 from skimage.transform import resize
 from skimage.color import rgb2gray
+from tqdm import trange, tqdm
+import pickle
 
 
 class PendulumData(Dataset):
@@ -144,26 +146,47 @@ class GymPendulumDatasetV2(Dataset):
         with open(path.join(dir, 'data.json')) as f:
             self._data = json.load(f)
         self.to_tensor = ToTensor()
+        self._preprocess()
 
     def __len__(self):
         return len(self._data['samples'])
 
     def __getitem__(self, index):
-        sample = self._data['samples'][index]
-
-        before = Image.open(os.path.join(self.dir, sample['before']))
-        before = self._process_image(before)
-
-        after = Image.open(os.path.join(self.dir, sample['after']))
-        after = self._process_image(after)
-
-        u = np.array(sample['control'])
-        return before, u, after
+        return self._befores[index], self._controls[index], self._afters[index]
 
     def _process_image(self, img):
-        return self.to_tensor(img.resize((GymPendulumDatasetV2.width,
-                                          GymPendulumDatasetV2.height))\
-                              .convert('L'))
+        return self.to_tensor(img.convert('L').
+                              resize((GymPendulumDatasetV2.width,
+                                      GymPendulumDatasetV2.height)))
+
+    def _preprocess(self):
+        preprocessed_file = os.path.join(self.dir, 'processed.pkl')
+        if not os.path.exists(preprocessed_file):
+            self._befores = []
+            self._afters = []
+            self._controls = []
+            for sample in tqdm(self._data['samples'], desc='preprocess data'):
+                before = Image.open(os.path.join(self.dir, sample['before']))
+                self._befores.append(self._process_image(before))
+
+                after = Image.open(os.path.join(self.dir, sample['after']))
+                self._afters.append(self._process_image(after))
+
+                self._controls.append(np.array(sample['control']))
+            with open(preprocessed_file, 'wb') as f:
+                pickle.dump({
+                    'befores': self._befores,
+                    'afters': self._afters,
+                    'controls': self._controls
+                }, f)
+        else:
+            with open(preprocessed_file, 'rb') as f:
+                _processed = pickle.load(f)
+                self._befores = _processed['befores']
+                self._afters = _processed['afters']
+                self._controls = _processed['controls']
+
+
 
     @classmethod
     def sample_traj(cls, sample_size, output_dir, step_size=1,
@@ -176,7 +199,7 @@ class GymPendulumDatasetV2(Dataset):
         if not path.exists(output_dir):
             os.makedirs(output_dir)
 
-        for i in range(sample_size):
+        for i in trange(sample_size):
             th = np.random.uniform(0, np.pi * 2)
             thdot = np.random.uniform(-8, 8)
             state = np.array([th, thdot])
