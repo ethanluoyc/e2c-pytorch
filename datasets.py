@@ -1,14 +1,12 @@
 import glob
 import os
+from os import path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import gym
-import torch
-import torchvision
-from mpl_toolkits.mplot3d import Axes3D
-from skimage.color import rgb2gray
-from skimage.transform import resize
+import json
+from datetime import datetime
 
 from torch.utils.data import Dataset
 from pixel2torque.tf_e2c.plane_data2 import T, num_t
@@ -73,6 +71,7 @@ class PlaneDataset(Dataset):
 
 
 class GymPendulumDataset(Dataset):
+    """Dataset definition for the Gym Pendulum task"""
     width = 40
     height = 40
     action_dim = 1
@@ -130,3 +129,91 @@ class GymPendulumDataset(Dataset):
             X1[i, :, :, :] = _env.render_state(state[0])
         _env.viewer.close()
         return X0, U, X1
+
+
+class GymPendulumDatasetV2(Dataset):
+    def __init__(self, dir):
+        self.dir = dir
+        with open(path.join(dir, 'data.json')) as f:
+            self._data = json.load(f)
+
+    def __len__(self):
+        return len(self._data['samples'])
+
+    def __getitem__(self, index):
+        sample = self._data['samples'][index]
+        before = plt.imread(sample['before'])
+        after = plt.imread(sample['after'])
+        u = np.array(sample['control'])
+        return before, u, after
+
+    @classmethod
+    def sample_traj(cls, sample_size, output_dir, step_size=1,
+                           apply_control=True, num_shards=10):
+        env = gym.make('Pendulum-v0').env
+        assert sample_size % num_shards == 0
+
+        samples = []
+
+        for i in range(sample_size):
+            th = np.random.uniform(0, np.pi * 2)
+            thdot = np.random.uniform(-8, 8)
+            state = np.array([th, thdot])
+            u0 = np.array([0])
+
+            initial1 = state
+            initial2 = env.step_from_state(state, u0)
+
+            # apply the same control over a few timesteps
+            if apply_control:
+                u = np.random.uniform(-2, 2, size=(1,))
+            else:
+                u = np.zeros((1,))
+
+            for _ in range(step_size):
+                state = env.step_from_state(state, u)
+
+            after1 = state
+            after2 = env.step_from_state(after1, u0)
+
+            initial1 = env.render_state(initial1[0])
+            initial2 = env.render_state(initial2[0])
+
+            after1 = env.render_state(after1[0])
+            after2 = env.render_state(after2[0])
+
+            initial = np.hstack((initial1, initial2))
+            after = np.hstack((after1, after2))
+
+            shard_no = i // (sample_size // num_shards)
+
+            shard_path = path.join('{:03d}-of-{:03d}'.format(shard_no, num_shards))
+
+            if not path.exists(path.join(output_dir, shard_path)):
+                os.makedirs(shard_path)
+
+            before_file = path.join(shard_path, 'before-{:05d}.jpg'.format(i))
+            plt.imsave(path.join(output_dir, before_file), initial)
+
+            after_file = path.join(shard_path, 'after-{:05d}.jpg'.format(i))
+            plt.imsave(path.join(output_dir, after_file), after)
+
+            samples.append({
+                'before': before_file,
+                'after': after_file,
+                'control': u.tolist()
+            })
+
+        with open(path.join(output_dir, 'data.json'), 'wt') as outfile:
+            json.dump(
+                {
+                    'metadata': {
+                        'num_samples': sample_size,
+                        'step_size': step_size,
+                        'apply_control': True,
+                        'time_created': str(datetime.now())
+                    },
+                    'samples': samples
+                }, outfile, indent=2)
+
+        env.viewer.close()

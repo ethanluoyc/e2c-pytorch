@@ -67,13 +67,13 @@ class PlaneEncoder(Encoder):
     def __init__(self, dim_in, dim_out):
         m = nn.Sequential(
             nn.Linear(dim_in, 150),
-            # nn.BatchNorm1d(150),
+            nn.BatchNorm1d(150),
             nn.ReLU(),
             nn.Linear(150, 150),
-            # nn.BatchNorm1d(150),
+            nn.BatchNorm1d(150),
             nn.ReLU(),
             nn.Linear(150, 150),
-            # nn.BatchNorm1d(150),
+            nn.BatchNorm1d(150),
             nn.ReLU(),
             nn.Linear(150, dim_out*2)
         )
@@ -84,13 +84,13 @@ class PlaneDecoder(Decoder):
     def __init__(self, dim_in, dim_out):
         m = nn.Sequential(
             nn.Linear(dim_in, 200),
-            # nn.BatchNorm1d(200),
+            nn.BatchNorm1d(200),
             nn.ReLU(),
             nn.Linear(200, 200),
-            # nn.BatchNorm1d(200),
+            nn.BatchNorm1d(200),
             nn.ReLU(),
             nn.Linear(200, dim_out),
-            # nn.BatchNorm1d(dim_out),
+            nn.BatchNorm1d(dim_out),
             nn.Sigmoid()
         )
         super(PlaneDecoder, self).__init__(m, dim_in, dim_out)
@@ -100,10 +100,10 @@ class PlaneTransition(Transition):
     def __init__(self, dim_z, dim_u):
         trans = nn.Sequential(
             nn.Linear(dim_z, 100),
-            # nn.BatchNorm1d(100),
+            nn.BatchNorm1d(100),
             nn.ReLU(),
             nn.Linear(100, 100),
-            # nn.BatchNorm1d(100),
+            nn.BatchNorm1d(100),
             nn.ReLU(),
             nn.Linear(100, dim_z*2)
         )
