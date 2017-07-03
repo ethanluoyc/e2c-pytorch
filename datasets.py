@@ -142,8 +142,8 @@ class GymPendulumDatasetV2(Dataset):
 
     def __getitem__(self, index):
         sample = self._data['samples'][index]
-        before = plt.imread(sample['before'])
-        after = plt.imread(sample['after'])
+        before = plt.imread(os.path.join(self.dir, sample['before']))
+        after = plt.imread(os.path.join(self.dir, sample['after']))
         u = np.array(sample['control'])
         return before, u, after
 
@@ -154,6 +154,9 @@ class GymPendulumDatasetV2(Dataset):
         assert sample_size % num_shards == 0
 
         samples = []
+
+        if not path.exists(output_dir):
+            os.makedirs(output_dir)
 
         for i in range(sample_size):
             th = np.random.uniform(0, np.pi * 2)
@@ -190,7 +193,7 @@ class GymPendulumDatasetV2(Dataset):
             shard_path = path.join('{:03d}-of-{:03d}'.format(shard_no, num_shards))
 
             if not path.exists(path.join(output_dir, shard_path)):
-                os.makedirs(shard_path)
+                os.makedirs(path.join(output_dir, shard_path))
 
             before_file = path.join(shard_path, 'before-{:05d}.jpg'.format(i))
             plt.imsave(path.join(output_dir, before_file), initial)
