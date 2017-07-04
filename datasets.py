@@ -154,10 +154,11 @@ class GymPendulumDatasetV2(Dataset):
     def __getitem__(self, index):
         return self._befores[index], self._controls[index], self._afters[index]
 
-    def _process_image(self, img):
-        return self.to_tensor(img.convert('L').
-                              resize((GymPendulumDatasetV2.width,
-                                      GymPendulumDatasetV2.height)))
+    @staticmethod
+    def _process_image(img):
+        return ToTensor()((img.convert('L').
+                           resize((GymPendulumDatasetV2.width,
+                                   GymPendulumDatasetV2.height))))
 
     def _preprocess(self):
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
@@ -186,11 +187,15 @@ class GymPendulumDatasetV2(Dataset):
                 self._afters = _processed['afters']
                 self._controls = _processed['controls']
 
-
+    @staticmethod
+    def _render_state_fully_observed(env, state):
+        before1 = state
+        before2 = env.step_from_state(state, np.array([0]))
+        return map(env.render_state,[before1[0], before2[0]])
 
     @classmethod
-    def sample_traj(cls, sample_size, output_dir, step_size=1,
-                    apply_control=True, num_shards=10):
+    def sample(cls, sample_size, output_dir, step_size=1,
+               apply_control=True, num_shards=10):
         env = gym.make('Pendulum-v0').env
         assert sample_size % num_shards == 0
 
@@ -202,11 +207,12 @@ class GymPendulumDatasetV2(Dataset):
         for i in trange(sample_size):
             th = np.random.uniform(0, np.pi * 2)
             thdot = np.random.uniform(-8, 8)
+
             state = np.array([th, thdot])
             u0 = np.array([0])
 
-            initial1 = state
-            initial2 = env.step_from_state(state, u0)
+            initial_state = state
+            before1, before2 = GymPendulumDatasetV2._render_state_fully_observed(env, state)
 
             # apply the same control over a few timesteps
             if apply_control:
@@ -214,19 +220,14 @@ class GymPendulumDatasetV2(Dataset):
             else:
                 u = np.zeros((1,))
 
+            state = env.step_from_state(state, u0)
             for _ in range(step_size):
                 state = env.step_from_state(state, u)
 
-            after1 = state
-            after2 = env.step_from_state(after1, u0)
+            after_state = state
+            after1, after2 = GymPendulumDatasetV2._render_state_fully_observed(env, state)
 
-            initial1 = env.render_state(initial1[0])
-            initial2 = env.render_state(initial2[0])
-
-            after1 = env.render_state(after1[0])
-            after2 = env.render_state(after2[0])
-
-            initial = np.hstack((initial1, initial2))
+            before = np.hstack((before1, before2))
             after = np.hstack((after1, after2))
 
             shard_no = i // (sample_size // num_shards)
@@ -237,15 +238,17 @@ class GymPendulumDatasetV2(Dataset):
                 os.makedirs(path.join(output_dir, shard_path))
 
             before_file = path.join(shard_path, 'before-{:05d}.jpg'.format(i))
-            plt.imsave(path.join(output_dir, before_file), initial)
+            plt.imsave(path.join(output_dir, before_file), before)
 
             after_file = path.join(shard_path, 'after-{:05d}.jpg'.format(i))
             plt.imsave(path.join(output_dir, after_file), after)
 
             samples.append({
+                'before_state': initial_state.tolist(),
+                'after_state': after_state.tolist(),
                 'before': before_file,
                 'after': after_file,
-                'control': u.tolist()
+                'control': u.tolist(),
             })
 
         with open(path.join(output_dir, 'data.json'), 'wt') as outfile:
@@ -255,7 +258,8 @@ class GymPendulumDatasetV2(Dataset):
                         'num_samples': sample_size,
                         'step_size': step_size,
                         'apply_control': True,
-                        'time_created': str(datetime.now())
+                        'time_created': str(datetime.now()),
+                        'version': 1
                     },
                     'samples': samples
                 }, outfile, indent=2)
