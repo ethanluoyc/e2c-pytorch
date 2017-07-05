@@ -4,6 +4,7 @@ Autoencoder baseline
 
 import torch
 from torch import nn
+from pixel2torque.pytorch.losses import kl_bernoulli
 
 
 class AE(nn.Module):
@@ -30,12 +31,6 @@ class AE(nn.Module):
         self.z = self.encoder(x)
         return self.decoder(self.z)
 
-
-def kl_bernoulli(p, q, eps=1e-8):
-    # http://ufldl.stanford.edu/tutorial/unsupervised/Autoencoders/
-    kl = p * torch.log((p + eps) / (q + eps)) + \
-         (1 - p) * torch.log((1 - p + eps) / (1 - q + eps))
-    return kl.mean()
 
 def compute_loss(x_pred, x_true, z_pred, z_true, beta=0.05):
     mse = nn.MSELoss()

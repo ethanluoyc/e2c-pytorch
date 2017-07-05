@@ -112,7 +112,7 @@ class PlaneTransition(Transition):
 
 class PendulumEncoder(Encoder):
     def __init__(self, dim_in, dim_out):
-        m = nn.Sequential(
+        m = nn.ModuleList([
             torch.nn.Linear(dim_in, 800),
             nn.BatchNorm1d(800),
             nn.ReLU(),
@@ -120,13 +120,18 @@ class PendulumEncoder(Encoder):
             nn.BatchNorm1d(800),
             nn.ReLU(),
             nn.Linear(800, 2 * dim_out)
-        )
+        ])
         super(PendulumEncoder, self).__init__(m, dim_in, dim_out)
+
+    def forward(self, x):
+        for l in self.m:
+            x = l(x)
+        return x.chunk(2, dim=1)
 
 
 class PendulumDecoder(Decoder):
     def __init__(self, dim_in, dim_out):
-        m = nn.Sequential(
+        m = nn.ModuleList([
             torch.nn.Linear(dim_in, 800),
             nn.BatchNorm1d(800),
             nn.ReLU(),
@@ -135,8 +140,13 @@ class PendulumDecoder(Decoder):
             nn.ReLU(),
             nn.Linear(800, dim_out),
             nn.Sigmoid()
-        )
+        ])
         super(PendulumDecoder, self).__init__(m, dim_in, dim_out)
+
+    def forward(self, z):
+        for l in self.m:
+            z = l(z)
+        return z
 
 
 class PendulumTransition(Transition):
