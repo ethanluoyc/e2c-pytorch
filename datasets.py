@@ -145,14 +145,13 @@ class GymPendulumDatasetV2(Dataset):
         self.dir = dir
         with open(path.join(dir, 'data.json')) as f:
             self._data = json.load(f)
-        self.to_tensor = ToTensor()
-        self._preprocess()
+        self._process()
 
     def __len__(self):
         return len(self._data['samples'])
 
     def __getitem__(self, index):
-        return self._befores[index], self._controls[index], self._afters[index]
+        return self._processed[index]
 
     @staticmethod
     def _process_image(img):
@@ -160,38 +159,30 @@ class GymPendulumDatasetV2(Dataset):
                            resize((GymPendulumDatasetV2.width,
                                    GymPendulumDatasetV2.height))))
 
-    def _preprocess(self):
+    def _process(self):
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
         if not os.path.exists(preprocessed_file):
-            self._befores = []
-            self._afters = []
-            self._controls = []
-            for sample in tqdm(self._data['samples'], desc='preprocess data'):
+            processed = []
+            for sample in tqdm(self._data['samples'], desc='processing data'):
                 before = Image.open(os.path.join(self.dir, sample['before']))
-                self._befores.append(self._process_image(before))
-
                 after = Image.open(os.path.join(self.dir, sample['after']))
-                self._afters.append(self._process_image(after))
 
-                self._controls.append(np.array(sample['control']))
+                processed.append((self._process_image(before),
+                                  np.array(sample['control']),
+                                  self._process_image(after)))
+
             with open(preprocessed_file, 'wb') as f:
-                pickle.dump({
-                    'befores': self._befores,
-                    'afters': self._afters,
-                    'controls': self._controls
-                }, f)
+                pickle.dump(processed, f)
+            self._processed = processed
         else:
             with open(preprocessed_file, 'rb') as f:
-                _processed = pickle.load(f)
-                self._befores = _processed['befores']
-                self._afters = _processed['afters']
-                self._controls = _processed['controls']
+                self._processed = pickle.load(f)
 
     @staticmethod
     def _render_state_fully_observed(env, state):
         before1 = state
         before2 = env.step_from_state(state, np.array([0]))
-        return map(env.render_state,[before1[0], before2[0]])
+        return map(env.render_state, [before1[0], before2[0]])
 
     @classmethod
     def sample(cls, sample_size, output_dir, step_size=1,
@@ -220,7 +211,7 @@ class GymPendulumDatasetV2(Dataset):
             else:
                 u = np.zeros((1,))
 
-            state = env.step_from_state(state, u0)
+            # state = env.step_from_state(state, u0)
             for _ in range(step_size):
                 state = env.step_from_state(state, u)
 
@@ -257,7 +248,7 @@ class GymPendulumDatasetV2(Dataset):
                     'metadata': {
                         'num_samples': sample_size,
                         'step_size': step_size,
-                        'apply_control': True,
+                        'apply_control': apply_control,
                         'time_created': str(datetime.now()),
                         'version': 1
                     },
