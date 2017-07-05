@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 from torchvision.transforms import ToTensor
 from torch.utils.data import Dataset
-from pixel2torque.tf_e2c.plane_data2 import T, num_t
+from .tf_e2c.plane_data2 import T, num_t
 from skimage.transform import resize
 from skimage.color import rgb2gray
 from tqdm import trange, tqdm

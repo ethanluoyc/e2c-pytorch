@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 
-from pixel2torque.pytorch.losses import binary_crossentropy
+from .losses import binary_crossentropy
 
 
 class NormalDistribution(object):

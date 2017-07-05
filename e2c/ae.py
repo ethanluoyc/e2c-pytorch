@@ -4,7 +4,7 @@ Autoencoder baseline
 
 import torch
 from torch import nn
-from pixel2torque.pytorch.losses import kl_bernoulli
+from .losses import kl_bernoulli
 
 
 class AE(nn.Module):
